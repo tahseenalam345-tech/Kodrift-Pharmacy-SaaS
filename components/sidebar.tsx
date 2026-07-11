@@ -14,7 +14,8 @@ import {
   X,
   ShieldCheck,
   LogOut,
-  LogIn
+  LogIn,
+  UserCircle // <--- Added this icon
 } from "lucide-react";
 import { useUIStore } from "@/store/ui-store";
 import { processLogout } from "@/lib/auth";
@@ -97,10 +98,29 @@ export function Sidebar({ userRole = "Guest" }: { userRole?: string }) {
 
         <div className="p-4 border-t border-border space-y-2">
 
+          {/* NAYA: Profile & Terminal Link (Visible to all logged-in users) */}
+          {userRole !== "Guest" && (
+            <Link
+              href="/dashboard/profile"
+              onClick={closeSidebar}
+              className={`
+                w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 text-sm font-semibold
+                ${pathname === "/dashboard/profile" ? "bg-teal-soft text-teal border border-teal/20" : "text-ink-dim hover:bg-cream hover:text-teal"}
+              `}
+            >
+              <UserCircle size={20} />
+              My Profile (Terminal)
+            </Link>
+          )}
+
           {showSettings && (
             <Link
               href="/dashboard/settings"
-              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-teal-soft text-ink-dim hover:text-teal transition-all text-sm font-semibold"
+              onClick={closeSidebar}
+              className={`
+                w-full flex items-center gap-3 p-3 rounded-xl transition-all text-sm font-semibold
+                ${pathname === "/dashboard/settings" ? "bg-teal-soft text-teal border border-teal/20" : "text-ink-dim hover:bg-cream hover:text-teal"}
+              `}
             >
               <Settings size={20} />
               System Settings
@@ -110,13 +130,13 @@ export function Sidebar({ userRole = "Guest" }: { userRole?: string }) {
           {userRole === "Guest" ? (
             <Link
               href="/login"
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-terracotta-dim hover:bg-terracotta/20 text-terracotta-hover transition-all text-sm font-bold border border-terracotta/20"
+              className="w-full flex items-center gap-3 p-3 rounded-xl bg-terracotta-dim hover:bg-terracotta/20 text-terracotta-hover transition-all text-sm font-bold border border-terracotta/20 mt-2"
             >
               <LogIn size={20} />
               Staff Login
             </Link>
           ) : (
-            <form action={processLogout} className="w-full">
+            <form action={processLogout} className="w-full mt-2">
               <button
                 type="submit"
                 className="w-full flex items-center gap-3 p-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 transition-all text-sm font-bold border border-red-200"

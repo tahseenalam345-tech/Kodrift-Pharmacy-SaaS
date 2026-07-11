@@ -2,7 +2,7 @@ import { createServer } from "@/lib/supabase/server";
 import { ReportFilter } from "./report-filter";
 import { ReportCharts } from "./report-charts"; 
 import { ReportInsights } from "./report-insights";
-import { ExportPdfBtn } from "./export-pdf-btn"; // NAYA COMPONENT
+import { ExportPdfBtn } from "./export-pdf-btn"; 
 import { BarChart3, TrendingUp, Receipt, Truck, WalletCards, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     .gte("created_at", startDate)
     .lte("created_at", endDate);
 
-  // 2. Fetch Expenses 
+  // 2. Fetch Expenses (With Tax)
   const expenseStart = startDate.split('T')[0];
   const expenseEnd = endDate.split('T')[0];
   const { data: expenses } = await supabase
@@ -58,10 +58,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     .or('stock.lte.5,expiry_date.lte.2026-12-31') 
     .limit(4);
 
-  // Totals Calculation
+  // Totals Calculation (FIXED: Added tax_amount to totalExpenses)
   const totalRevenue = sales?.reduce((sum, sale) => sum + Number(sale.net_total), 0) || 0;
   const grossProfit = sales?.reduce((sum, sale) => sum + Number(sale.profit), 0) || 0;
-  const totalExpenses = expenses?.reduce((sum, exp) => sum + Number(exp.amount), 0) || 0;
+  const totalExpenses = expenses?.reduce((sum, exp) => sum + Number(exp.amount) + Number(exp.tax_amount || 0), 0) || 0;
   const totalPurchases = purchases?.reduce((sum, p) => sum + Number(p.total_amount), 0) || 0;
   
   const trueNetProfit = grossProfit - totalExpenses;
@@ -70,7 +70,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   // Insights Calculations
   let cashTotal = 0;
   let onlineTotal = 0;
-  const staffMap = new Map(); // NAYA: Staff Performance Map
+  const staffMap = new Map(); 
 
   sales?.forEach(sale => {
     // Payment breakdown
@@ -111,7 +111,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   const lowStockItems = inventoryWarnings?.map(i => ({ name: i.name, stock: i.stock, expiry: i.expiry_date })) || [];
 
-  // Chart Data
+  // Chart Data (FIXED: Added tax_amount to daily expense and profit calculations)
   const dailyDataMap = new Map();
   let currentDay = new Date(startDate);
   const end = new Date(endDate);
@@ -134,8 +134,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     const dateStr = exp.expense_date.split('T')[0];
     if (dailyDataMap.has(dateStr)) {
       const dayData = dailyDataMap.get(dateStr);
-      dayData.expense += Number(exp.amount);
-      dayData.profit -= Number(exp.amount);
+      const dailyTotalExpense = Number(exp.amount) + Number(exp.tax_amount || 0);
+      dayData.expense += dailyTotalExpense;
+      dayData.profit -= dailyTotalExpense;
     }
   });
 
@@ -155,7 +156,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </p>
         </div>
         
-        {/* NAYA EXPORT BUTTON */}
         <div className="flex gap-2">
           <ExportPdfBtn />
         </div>
@@ -221,14 +221,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <ReportCharts data={chartData} />
       </div>
 
-      {/* UPDATED INSIGHTS */}
       <ReportInsights 
         topSellers={topSellers} 
         lowStockItems={lowStockItems} 
         paymentBreakdown={{ cash: cashTotal, online: onlineTotal }} 
         taxPaid={totalTaxPaid} 
         pendingPayables={pendingPayables} 
-        staffPerformance={staffPerformance} // Passed the new data
+        staffPerformance={staffPerformance}
       />
 
     </div>

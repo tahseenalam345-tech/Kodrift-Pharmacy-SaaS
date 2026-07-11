@@ -10,10 +10,14 @@ import {
   ArrowRight,
   Users,
   ChevronDown,
-  Truck
+  Truck,
+  CreditCard,
+  Banknote
 } from "lucide-react";
 import Link from "next/link";
 import RevenueChart from "./components/revenue-chart";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardOverview() {
   const supabase = await createServer();
@@ -34,7 +38,7 @@ export default async function DashboardOverview() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
 
-  // Parallel Data Fetching with Nested Joins
+  // Parallel Data Fetching with Updated Schema Columns
   const [
     { data: weeklySales },
     { data: todayExpenses },
@@ -44,27 +48,35 @@ export default async function DashboardOverview() {
     { data: recentPurchases }
   ] = await Promise.all([
     supabase.from("sales").select("net_total, profit, created_at").gte("created_at", thirtyDaysAgoStr),
-    supabase.from("expenses").select("amount").eq("expense_date", todayDateString),
+    
+    // UPDATED: Fetching tax_amount to calculate exact operational cost
+    supabase.from("expenses").select("amount, tax_amount").eq("expense_date", todayDateString),
+    
     supabase.from("medicines").select("id, name, stock, cost_price"),
-    // Fetching Sales WITH nested sold items inside them for the expandable accordion
+    
+    // UPDATED: Fetching payment_method and cashier_name for live transactions
     supabase.from("sales").select(`
-      id, net_total, created_at,
+      id, net_total, created_at, payment_method, cashier_name,
       sale_items ( quantity, price, medicines ( name ) )
     `).order("created_at", { ascending: false }).limit(5),
-    // Fetching Activity WITH Staff Details
+    
     supabase.from("staff_activity").select(`
       staff_id, type, created_at,
       staff ( name, role )
     `).gte("created_at", startOfDayStr).order("created_at", { ascending: true }),
-    // Fetching Purchases for Analytics
-    supabase.from("purchases").select("id, supplier_name, total_amount, created_at").gte("created_at", thirtyDaysAgoStr)
+    
+    // UPDATED: Fetching amount_paid for vendor analytics
+    supabase.from("purchases").select("id, supplier_name, total_amount, amount_paid, created_at").gte("created_at", thirtyDaysAgoStr)
   ]);
 
-  // 1. Financial KPIs
+  // 1. Financial KPIs (Calculated with new schema elements)
   const todaySalesData = weeklySales?.filter(s => s.created_at >= startOfDayStr && s.created_at <= endOfDayStr) || [];
   const dailyRevenue = todaySalesData.reduce((sum, sale) => sum + Number(sale.net_total), 0);
   const grossProfit = todaySalesData.reduce((sum, sale) => sum + Number(sale.profit), 0);
-  const dailyOutflow = todayExpenses?.reduce((sum, exp) => sum + Number(exp.amount), 0) || 0;
+  
+  // NAYA: Expense mein amount aur tax dono shamil kiye gaye hain
+  const dailyOutflow = todayExpenses?.reduce((sum, exp) => sum + Number(exp.amount) + Number((exp as any).tax_amount || 0), 0) || 0;
+  
   const trueNetProfit = grossProfit - dailyOutflow;
 
   // 2. Inventory & Stock Alerts
@@ -105,7 +117,7 @@ export default async function DashboardOverview() {
   const activeStaffList = Array.from(activeStaffMap.values());
   const activeStaffCount = activeStaffList.length;
 
-  // 5. Deep Analytics (Top Suppliers / Cost Analysis)
+  // 5. Deep Analytics (Vendor Intelligence)
   const supplierTotals: Record<string, number> = {};
   recentPurchases?.forEach(p => {
     const name = p.supplier_name || "Unknown Vendor";
@@ -114,7 +126,7 @@ export default async function DashboardOverview() {
   const topSuppliers = Object.entries(supplierTotals)
     .map(([name, total]) => ({ name, total }))
     .sort((a, b) => b.total - a.total)
-    .slice(0, 3); // Top 3 costly suppliers
+    .slice(0, 3);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-20 md:pb-10">
@@ -137,7 +149,6 @@ export default async function DashboardOverview() {
 
       {/* LAYER 1: KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* ... (Existing KPI Cards remain exactly the same as previous) ... */}
         <div className="animate-rise bg-white border border-border p-5 rounded-2xl relative overflow-hidden group hover:-translate-y-1 hover:shadow-lg hover:border-teal/40 transition-all">
           <div className="absolute top-0 right-0 p-4 opacity-[0.06] pointer-events-none text-teal"><Wallet size={64} /></div>
           <h3 className="text-[10px] font-bold text-ink-mute uppercase tracking-wider mb-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-teal"></span>Today's Revenue</h3>
@@ -145,7 +156,7 @@ export default async function DashboardOverview() {
         </div>
         <div className="animate-rise bg-white border border-border p-5 rounded-2xl relative overflow-hidden group hover:-translate-y-1 hover:shadow-lg hover:border-terracotta/40 transition-all" style={{ animationDelay: '0.1s' }}>
           <div className="absolute top-0 right-0 p-4 opacity-[0.06] pointer-events-none text-terracotta"><Receipt size={64} /></div>
-          <h3 className="text-[10px] font-bold text-ink-mute uppercase tracking-wider mb-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-terracotta"></span>Today's Expenses</h3>
+          <h3 className="text-[10px] font-bold text-ink-mute uppercase tracking-wider mb-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-terracotta"></span>Today's Expenses (Inc. Tax)</h3>
           <p className="text-2xl md:text-3xl font-heading font-semibold text-terracotta-hover truncate">Rs {Math.round(dailyOutflow).toLocaleString()}</p>
         </div>
         <div className="animate-rise bg-white border border-border p-5 rounded-2xl relative overflow-hidden group hover:-translate-y-1 hover:shadow-lg hover:border-success/40 transition-all" style={{ animationDelay: '0.15s' }}>
@@ -173,8 +184,6 @@ export default async function DashboardOverview() {
 
         {/* Right Column: Alerts & Staff */}
         <div className="space-y-6">
-          
-          {/* Critical Inventory Alerts */}
           <div className="bg-white border border-border p-6 rounded-2xl shadow-sm relative overflow-hidden">
             {criticalItemsCount > 0 && <div className="absolute top-0 left-0 w-full h-1 bg-terracotta animate-pulse"></div>}
             <div className="flex justify-between items-center mb-4">
@@ -214,7 +223,6 @@ export default async function DashboardOverview() {
             </div>
           </div>
 
-          {/* Active Staff Monitor */}
           <div className="bg-white border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-heading font-semibold text-teal flex items-center gap-2">
@@ -255,7 +263,7 @@ export default async function DashboardOverview() {
       {/* LAYER 3: DEEP ANALYTICS & EXPANDABLE TRANSACTIONS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Expandable Live Transactions */}
+        {/* NAYA: Live Transactions ab Payment Method aur Cashier Name show kar raha hai */}
         <div className="bg-white border border-border p-6 rounded-2xl shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-heading font-semibold text-teal flex items-center gap-2">
@@ -271,8 +279,17 @@ export default async function DashboardOverview() {
                     <div className="flex items-center gap-2">
                       <ChevronDown size={16} className="text-ink-mute group-open:rotate-180 transition-transform" />
                       <div>
-                        <p className="text-sm font-bold text-ink group-open:text-terracotta transition-colors">INV-{sale.id.slice(0,6).toUpperCase()}</p>
-                        <p className="text-[10px] text-ink-mute">{new Date(sale.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-ink group-open:text-terracotta transition-colors">INV-{sale.id.slice(0,6).toUpperCase()}</p>
+                          {(sale as any).payment_method === 'Online' || (sale as any).payment_method === 'Online Wallet' || (sale as any).payment_method === 'Bank Transfer' ? (
+                            <span className="text-[8px] bg-terracotta-dim text-terracotta border border-terracotta/20 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><CreditCard size={8}/> Online</span>
+                          ) : (
+                            <span className="text-[8px] bg-teal-soft text-teal border border-teal/20 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><Banknote size={8}/> Cash</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-ink-mute mt-0.5">
+                          {new Date(sale.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • By {(sale as any).cashier_name || 'Admin'}
+                        </p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -281,7 +298,6 @@ export default async function DashboardOverview() {
                     </div>
                   </summary>
                   
-                  {/* Expanded Receipt Details */}
                   <div className="mt-3 pt-3 border-t border-border/50 pl-6">
                     <table className="w-full text-xs text-ink-dim">
                       <tbody>
@@ -303,7 +319,6 @@ export default async function DashboardOverview() {
           )}
         </div>
 
-        {/* Vendor Insights & Purchases Analytics */}
         <div className="bg-white border border-border p-6 rounded-2xl shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-heading font-semibold text-teal flex items-center gap-2">
@@ -350,7 +365,6 @@ export default async function DashboardOverview() {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
